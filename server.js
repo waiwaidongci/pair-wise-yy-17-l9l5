@@ -1,35 +1,26 @@
 const express = require('express');
-const fs = require('fs/promises');
 const path = require('path');
 
-const app = express();
 const config = require('./project.config');
+const rules = require('./lib/rules');
+const { readDb, writeDb } = require('./lib/store');
+
+const app = express();
 const PORT = process.env.PORT || config.port || 3900;
-const DB_FILE = path.join(__dirname, 'data', 'db.json');
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-async function readDb() {
-  const raw = await fs.readFile(DB_FILE, 'utf8');
-  return JSON.parse(raw);
-}
-
-async function writeDb(db) {
-  await fs.writeFile(DB_FILE, JSON.stringify(db, null, 2) + '\n');
-}
-
-function stamp(action, note) {
-  return {
-    at: new Date().toISOString(),
-    action,
-    note: note || ''
-  };
+function stamp(action, note, extra = {}) {
+  return { at: new Date().toISOString(), action, note: note || '', ...extra };
 }
 
 function sortNewest(a, b) {
   return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
 }
+
+// 巡测的流程字段只能通过处置台命令流转，防止普通 PATCH 绕过复查判定。
+const SURVEY_GUARDED = ['status', 'assignee', 'reviewDueAt', 'review', 'reviewNote'];
 
 app.get('/api/config', (req, res) => {
   res.json(config);
@@ -66,12 +57,16 @@ app.patch('/api/:collection/:id', async (req, res) => {
   if (!Array.isArray(db[collection])) return res.status(404).json({ error: 'unknown collection' });
   const item = db[collection].find((entry) => entry.id === id);
   if (!item) return res.status(404).json({ error: 'not found' });
-  const historyAction = req.body.historyAction;
-  delete req.body.historyAction;
-  Object.assign(item, req.body, { updatedAt: new Date().toISOString() });
+
+  const payload = { ...req.body };
+  delete payload.historyAction;
+  if (collection === 'surveys') {
+    for (const field of SURVEY_GUARDED) delete payload[field];
+  }
+  Object.assign(item, payload, { updatedAt: new Date().toISOString() });
   item.history = item.history || [];
-  if (historyAction || req.body.note || req.body.memo || req.body.status) {
-    item.history.unshift(stamp(historyAction || req.body.status || '更新', req.body.note || req.body.memo || ''));
+  if (payload.note || payload.memo) {
+    item.history.unshift(stamp('更新', payload.note || payload.memo));
   }
   await writeDb(db);
   res.json(item);
@@ -88,75 +83,94 @@ app.delete('/api/:collection/:id', async (req, res) => {
   res.status(204).end();
 });
 
-app.post('/api/action/:actionId/:id', async (req, res) => {
+// 找到一条巡测记录。
+function findSurvey(db, id) {
+  const survey = db.surveys?.find((entry) => entry.id === id);
+  if (!survey) return { error: '未找到巡测记录', status: 404 };
+  return { survey };
+}
+
+function finish(res, db, result, status = 200) {
+  if (result.error) return res.status(result.status || 409).json({ error: result.error });
+  return writeDb(db).then(() => res.status(status).json(result.item));
+}
+
+// 标记异常：登记进入“待派单”，同时将样点置为重点保护。
+app.post('/api/console/alert/:id', async (req, res) => {
   const db = await readDb();
-  const action = config.actions.find((entry) => entry.id === req.params.actionId);
-  if (!action) return res.status(404).json({ error: 'unknown action' });
-  const item = db[action.collection]?.find((entry) => entry.id === req.params.id);
-  if (!item) return res.status(404).json({ error: 'not found' });
-  const result = runAction(db, action, item);
+  const found = findSurvey(db, req.params.id);
+  if (found.error) return res.status(found.status).json({ error: found.error });
+  const result = rules.markAlert(db, found.survey, config);
   if (result.error) return res.status(409).json({ error: result.error });
+  if (result.site) result.site.protectedStatus = '重点保护';
   await writeDb(db);
   res.json(result.item);
 });
 
-function getValue(source, pathName) {
-  return pathName.split('.').reduce((value, key) => value?.[key], source);
-}
+// 派单：指定处置人 + 复查期限。
+app.post('/api/console/dispatch/:id', async (req, res) => {
+  const db = await readDb();
+  const found = findSurvey(db, req.params.id);
+  if (found.error) return res.status(found.status).json({ error: found.error });
+  const result = rules.dispatch(db, found.survey, req.body || {}, config);
+  await finish(res, db, result, 201);
+});
 
-function setValue(target, pathName, value) {
-  const keys = pathName.split('.');
-  let cursor = target;
-  while (keys.length > 1) {
-    const key = keys.shift();
-    cursor[key] = cursor[key] || {};
-    cursor = cursor[key];
-  }
-  cursor[keys[0]] = value;
-}
+// 改派：必须写明原因。
+app.post('/api/console/reassign/:id', async (req, res) => {
+  const db = await readDb();
+  const found = findSurvey(db, req.params.id);
+  if (found.error) return res.status(found.status).json({ error: found.error });
+  const result = rules.reassign(db, found.survey, req.body || {}, config);
+  await finish(res, db, result);
+});
 
-function findRelated(db, relation, item) {
-  return db[relation.collection]?.find((entry) => entry.id === item[relation.localKey]);
-}
+// 提交复查：三项比对当前基准，全过才通过，否则退回留数据。
+app.post('/api/console/submit/:id', async (req, res) => {
+  const db = await readDb();
+  const found = findSurvey(db, req.params.id);
+  if (found.error) return res.status(found.status).json({ error: found.error });
+  const result = rules.submitReview(db, found.survey, req.body || {}, config);
+  await finish(res, db, result);
+});
 
-function runAction(db, action, item) {
-  const related = action.relation ? findRelated(db, action.relation, item) : null;
-  const context = { item, related };
-  const levelRank = { '低': 1, '中': 2, '高': 3 };
-  for (const guard of action.guards || []) {
-    const left = getValue(context, guard.left);
-    const right = guard.rightPath ? getValue(context, guard.rightPath) : guard.right;
-    if (guard.op === 'missing' && left) continue;
-    if (guard.op === 'missing' && !left) return { error: guard.message };
-    if (guard.op === 'eq' && left !== right) return { error: guard.message };
-    if (guard.op === 'neq' && left === right) return { error: guard.message };
-    if (guard.op === 'gte' && Number(left) < Number(right)) return { error: guard.message };
-    if (guard.op === 'levelGte' && (levelRank[left] || 0) < (levelRank[right] || 0)) return { error: guard.message };
-    if (guard.op === 'notIn' && guard.values.includes(left)) return { error: guard.message };
+// 调整样点基准：留痕；未完成复查在读取/列表时按新范围动态重判，无需改状态。
+app.post('/api/sites/:id/baseline', async (req, res) => {
+  const db = await readDb();
+  const site = db.sites?.find((entry) => entry.id === req.params.id);
+  if (!site) return res.status(404).json({ error: '未找到样点' });
+  const body = req.body || {};
+  const reason = String(body.reason || '').trim();
+  if (!reason) return res.status(400).json({ error: '调整基准必须写明原因' });
+  const before = `温度${site.baselineTemp}℃ / 湿度${site.baselineHumidity}% / CO2 ${site.baselineCo2}ppm`;
+
+  const next = {
+    baselineTemp: Number(body.baselineTemp),
+    baselineHumidity: Number(body.baselineHumidity),
+    baselineCo2: Number(body.baselineCo2)
+  };
+  for (const value of Object.values(next)) {
+    if (!Number.isFinite(value)) return res.status(400).json({ error: '基准数值不完整' });
   }
-  for (const patch of action.patches || []) {
-    const target = patch.target === 'related' ? related : item;
-    if (!target) continue;
-    const next = patch.valuePath ? getValue(context, patch.valuePath) : patch.value;
-    setValue(target, patch.field, next);
-    target.updatedAt = new Date().toISOString();
-    target.history = target.history || [];
-    target.history.unshift(stamp(action.label, action.note || '状态流转'));
-  }
-  for (const delta of action.deltas || []) {
-    const target = delta.target === 'related' ? related : item;
-    if (!target) continue;
-    const sourceAmount = delta.amountPath ? Number(getValue(context, delta.amountPath)) : 1;
-    const multiplier = delta.amount === undefined ? 1 : Number(delta.amount);
-    const amount = sourceAmount * multiplier;
-    const current = Number(getValue({ target }, `target.${delta.field}`) || 0);
-    setValue(target, delta.field, current + amount);
-    target.updatedAt = new Date().toISOString();
-    target.history = target.history || [];
-    target.history.unshift(stamp(action.label, action.note || '数量调整'));
-  }
-  return { item };
-}
+  Object.assign(site, next, { updatedAt: new Date().toISOString() });
+  site.history = site.history || [];
+  site.history.unshift(
+    stamp('基准调整', `${before} → 温度${next.baselineTemp}℃ / 湿度${next.baselineHumidity}% / CO2 ${next.baselineCo2}ppm；原因：${reason}`)
+  );
+  await writeDb(db);
+  res.json(site);
+});
+
+// 控制台数据：人员名单 + 处置摘要（含缺项、超基准、逾期判定）。
+app.get('/api/console/summary', async (req, res) => {
+  const db = await readDb();
+  res.json({
+    staff: rules.staffList(db, config),
+    dutyLeads: config.dutyLeads || [],
+    tolerances: config.tolerances,
+    summary: rules.consoleSummary(db, config)
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`${config.title} running at http://localhost:${PORT}`);

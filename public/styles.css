@@ -329,6 +329,156 @@ main {
   transform: translateY(0);
 }
 
+/* 处置台 */
+.owner-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.overdue {
+  color: var(--bad);
+}
+
+.missing-line {
+  margin-top: 10px;
+  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ok-line {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: rgba(161, 61, 61, .12);
+  color: var(--bad);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.check {
+  border-radius: 6px;
+  padding: 9px;
+  display: grid;
+  gap: 2px;
+  background: #f7f3eb;
+}
+
+.check span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check strong {
+  font-size: 16px;
+}
+
+.check em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.check.ok {
+  background: rgba(38, 115, 77, .1);
+}
+
+.check.ok strong,
+.check.ok em {
+  color: var(--ok);
+}
+
+.check.bad {
+  background: rgba(161, 61, 61, .1);
+}
+
+.check.bad strong,
+.check.bad em {
+  color: var(--bad);
+}
+
+.check.missing strong {
+  color: var(--warn);
+}
+
+.last-review {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.last-review.ok {
+  color: var(--ok);
+}
+
+.last-review.bad {
+  color: var(--bad);
+}
+
+.badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* 弹窗 */
+.modal {
+  display: none;
+}
+
+.modal.show {
+  display: block;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(32, 32, 29, .42);
+  z-index: 10;
+}
+
+.modal-box {
+  position: fixed;
+  z-index: 11;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.modal-hint {
+  margin: -6px 0 12px;
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+label small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
 @media (max-width: 980px) {
   .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -352,6 +502,7 @@ main {
   .stats,
   .form-grid,
   .detail,
+  .checks,
   .toolbar {
     grid-template-columns: 1fr;
   }
