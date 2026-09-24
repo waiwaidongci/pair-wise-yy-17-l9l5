@@ -4,6 +4,7 @@ const path = require('path');
 
 const app = express();
 const config = require('./project.config');
+const handling = require('./rules/handling');
 const PORT = process.env.PORT || config.port || 3900;
 const DB_FILE = path.join(__dirname, 'data', 'db.json');
 
@@ -86,6 +87,80 @@ app.delete('/api/:collection/:id', async (req, res) => {
   if (db[collection].length === before) return res.status(404).json({ error: 'not found' });
   await writeDb(db);
   res.status(204).end();
+});
+
+// ---------- 处置台 ----------
+
+function findSurvey(db, id) {
+  const survey = db.surveys?.find((entry) => entry.id === id);
+  if (!survey) return { error: { status: 404, body: { error: '巡测记录不存在' } } };
+  const site = db.sites?.find((entry) => entry.id === survey.siteId);
+  if (!site) return { error: { status: 409, body: { error: '关联样点不存在，无法按基准判定' } } };
+  return { survey, site };
+}
+
+function fail(res, error) {
+  return res.status(error.status || 409).json(error.body || { error });
+}
+
+app.post('/api/desk/:id/register', async (req, res) => {
+  const db = await readDb();
+  const found = findSurvey(db, req.params.id);
+  if (found.error) return fail(res, found.error);
+  const result = handling.register(found.survey, found.site, req.body || {});
+  if (result.error) return res.status(409).json({ error: result.error });
+  await writeDb(db);
+  res.status(201).json(result.survey);
+});
+
+app.post('/api/desk/:id/reassign', async (req, res) => {
+  const db = await readDb();
+  const found = findSurvey(db, req.params.id);
+  if (found.error) return fail(res, found.error);
+  const result = handling.reassign(found.survey, req.body || {});
+  if (result.error) return res.status(409).json({ error: result.error });
+  await writeDb(db);
+  res.json(result.survey);
+});
+
+app.post('/api/desk/:id/review', async (req, res) => {
+  const db = await readDb();
+  const found = findSurvey(db, req.params.id);
+  if (found.error) return fail(res, found.error);
+  const result = handling.review(found.survey, found.site, req.body || {});
+  if (result.error) return res.status(409).json({ error: result.error });
+  await writeDb(db);
+  res.status(201).json({ survey: result.survey, passed: result.passed });
+});
+
+// 样点基准调整：保存后对未完成复查的记录按新范围重判
+app.patch('/api/sites/:id/baseline', async (req, res) => {
+  const db = await readDb();
+  const site = db.sites?.find((entry) => entry.id === req.params.id);
+  if (!site) return res.status(404).json({ error: '样点不存在' });
+
+  const baselineFields = config.handling.metrics.map((metric) => metric.baseline);
+  const patch = {};
+  for (const field of baselineFields) {
+    if (req.body[field] === undefined) continue;
+    const num = Number(req.body[field]);
+    if (!Number.isFinite(num)) return res.status(409).json({ error: '基准值必须是数字' });
+    patch[field] = num;
+  }
+  if (!Object.keys(patch).length) return res.status(409).json({ error: '未提供基准字段' });
+  const actor = String(req.body.actor || '').trim();
+
+  Object.assign(site, patch, { updatedAt: new Date().toISOString() });
+  const summary = config.handling.metrics
+    .filter((metric) => patch[metric.baseline] !== undefined)
+    .map((metric) => `${metric.label}基准 → ${patch[metric.baseline]}${metric.unit}`)
+    .join('；');
+  site.history = site.history || [];
+  site.history.unshift(handling.stamp('基准调整', summary, actor));
+
+  const affected = handling.rejudgeAfterBaseline(db, site, actor);
+  await writeDb(db);
+  res.json({ site, rejudged: affected });
 });
 
 app.post('/api/action/:actionId/:id', async (req, res) => {

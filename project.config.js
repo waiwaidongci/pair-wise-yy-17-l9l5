@@ -8,17 +8,29 @@ module.exports = {
     '已复查': 'ok',
     '重点保护': 'warn',
     '异常待复查': 'bad',
+    '复查退回': 'bad',
     '暂停开放': 'bad'
   },
   collections: {
     sites: { label: '样点档案' },
     surveys: { label: '巡测记录' }
   },
+  // 处置台规则：值班负责人、处置人名单，以及三项指标相对样点基准的允许偏差
+  handling: {
+    dutyLeads: ['周岭', '贺兰'],
+    staff: ['沈宁', '江屿', '洛晴', '韩松'],
+    metrics: [
+      { label: '温度', name: 'temperature', baseline: 'baselineTemp', unit: '℃', tolerance: 1 },
+      { label: '湿度', name: 'humidity', baseline: 'baselineHumidity', unit: '%', tolerance: 5 },
+      { label: 'CO2', name: 'co2', baseline: 'baselineCo2', unit: 'ppm', tolerance: 120 }
+    ]
+  },
   stats: [
     { label: '样点', collection: 'sites' },
     { label: '重点保护', collection: 'sites', filter: { field: 'protectedStatus', value: '重点保护' } },
     { label: '巡测记录', collection: 'surveys' },
-    { label: '待复查', collection: 'surveys', filter: { field: 'status', value: '异常待复查' } }
+    { label: '待复查', collection: 'surveys', filter: { field: 'status', value: '异常待复查' } },
+    { label: '已复查', collection: 'surveys', filter: { field: 'status', value: '已复查' } }
   ],
   views: [
     {
@@ -27,6 +39,14 @@ module.exports = {
       type: 'dashboard',
       focusTitle: '异常与复查',
       focus: { collection: 'surveys', field: 'status', values: ['异常待复查'], limit: 8 }
+    },
+    {
+      id: 'desk',
+      label: '处置台',
+      type: 'desk',
+      listTitle: '异常处置列表',
+      searchPlaceholder: '搜索处置人、样点、人员',
+      statusOptions: ['异常待复查', '已复查']
     },
     {
       id: 'sites',
@@ -69,14 +89,16 @@ module.exports = {
       searchPlaceholder: '搜索人员、干扰痕迹、照片',
       searchFields: ['surveyor', 'disturbance', 'photoUrl'],
       statusField: 'status',
-      statusOptions: ['正常', '异常待复查', '已复查'],
+      statusOptions: ['正常', '异常待复查', '复查退回', '已复查'],
       titleFields: ['surveyor', 'date'],
       relation: { collection: 'sites', localKey: 'siteId', labelFields: ['cave', 'zone', 'pointCode'] },
       summaryFields: ['disturbance', 'reviewNote'],
       detailFields: [
         { label: '温度', name: 'temperature' },
         { label: '湿度', name: 'humidity' },
-        { label: 'CO2', name: 'co2' }
+        { label: 'CO2', name: 'co2' },
+        { label: '处置人', name: 'assignee' },
+        { label: '复查期限', name: 'dueDate' }
       ],
       defaults: { status: '正常', reviewNote: '' },
       fields: [
@@ -95,17 +117,6 @@ module.exports = {
   actions: [
     { id: 'site-normal', label: '常规观察', collection: 'sites', patches: [{ field: 'protectedStatus', value: '常规观察' }] },
     { id: 'site-focus', label: '重点保护', collection: 'sites', patches: [{ field: 'protectedStatus', value: '重点保护' }] },
-    { id: 'site-close', label: '暂停开放', collection: 'sites', danger: true, patches: [{ field: 'protectedStatus', value: '暂停开放' }] },
-    {
-      id: 'survey-alert',
-      label: '标记异常',
-      collection: 'surveys',
-      relation: { collection: 'sites', localKey: 'siteId' },
-      patches: [
-        { field: 'status', value: '异常待复查' },
-        { target: 'related', field: 'protectedStatus', value: '重点保护' }
-      ]
-    },
-    { id: 'survey-review', label: '完成复查', collection: 'surveys', patches: [{ field: 'status', value: '已复查' }, { field: 'reviewNote', value: '异常已复核' }] }
+    { id: 'site-close', label: '暂停开放', collection: 'sites', danger: true, patches: [{ field: 'protectedStatus', value: '暂停开放' }] }
   ]
 };

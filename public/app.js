@@ -130,6 +130,7 @@ function renderStats() {
 }
 
 function renderCard(item, collection, view) {
+  if (collection === 'surveys' && window.renderSurveyCard) return window.renderSurveyCard(item);
   const title = view.titleFields.map((field) => item[field]).filter(Boolean).join(' / ') || item.id;
   const statusValue = item[view.statusField];
   const relation = view.relation ? `<div class="meta">${escapeHtml(relationLabel(view.relation, item[view.relation.localKey]))}</div>` : '';
@@ -143,12 +144,13 @@ function renderCard(item, collection, view) {
     .filter((action) => action.collection === collection)
     .map((action) => `<button class="${action.danger ? 'danger' : 'ghost'}" data-action="${action.id}" data-id="${item.id}">${escapeHtml(action.label)}</button>`)
     .join('');
+  const extras = window.renderSiteExtras && collection === 'sites' ? window.renderSiteExtras(item) : '';
   return `<article class="card">
     <div class="card-head"><h3>${escapeHtml(title)}</h3>${statusValue ? pill(statusValue, toneFor(statusValue)) : ''}</div>
     ${relation}
     ${summary ? `<p>${escapeHtml(summary)}</p>` : ''}
     ${details ? `<div class="detail">${details}</div>` : ''}
-    ${actions ? `<div class="actions">${actions}</div>` : ''}
+    ${actions || extras ? `<div class="actions">${actions}${extras}</div>` : ''}
     ${historyHtml(item)}
   </article>`;
 }
@@ -207,7 +209,11 @@ function render() {
   $('#title').textContent = state.config.title;
   document.title = state.config.title;
   $('#lede').textContent = state.config.lede;
-  $('#main').innerHTML = state.config.views.map((view) => view.type === 'dashboard' ? renderDashboardView(view) : renderCrudView(view)).join('');
+  $('#main').innerHTML = state.config.views.map((view) => {
+    if (view.type === 'dashboard') return renderDashboardView(view);
+    if (view.type === 'desk') return window.renderDeskView ? window.renderDeskView(view) : '';
+    return renderCrudView(view);
+  }).join('');
   setTab(state.activeTab || state.config.views[0].id);
 }
 
@@ -233,7 +239,12 @@ document.addEventListener('click', async (event) => {
 
 document.addEventListener('input', (event) => {
   const view = state.config.views.find((entry) => entry.id && (event.target.id === `search-${entry.id}` || event.target.id === `status-${entry.id}`));
-  if (view) $(`#list-${view.id}`).innerHTML = renderList(view);
+  if (!view) return;
+  if (view.type === 'desk' && window.renderDeskList) {
+    $(`#list-${view.id}`).innerHTML = window.renderDeskList(view);
+  } else {
+    $(`#list-${view.id}`).innerHTML = renderList(view);
+  }
 });
 
 document.addEventListener('submit', async (event) => {
@@ -251,6 +262,7 @@ $('#refreshBtn').addEventListener('click', () => load().then(() => toast('已刷
 
 async function boot() {
   state.config = await api('/api/config');
+  if (window.initOperator) window.initOperator();
   renderTabs();
   await load();
 }

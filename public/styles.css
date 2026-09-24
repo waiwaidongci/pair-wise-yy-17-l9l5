@@ -309,6 +309,166 @@ main {
   border-radius: 8px;
 }
 
+/* 顶部操作人 */
+.top-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.operator {
+  min-width: 180px;
+  font-size: 12px;
+}
+
+.operator select {
+  padding: 8px 10px;
+}
+
+/* 处置台 */
+.desk-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.desk-head h2 {
+  margin: 0;
+}
+
+.assign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.assign .overdue {
+  color: var(--bad);
+}
+
+.handover {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: #f7f3eb;
+  border-radius: 6px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.metric {
+  display: grid;
+  gap: 3px;
+  border-radius: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  background: #fbf9f4;
+}
+
+.metric strong {
+  font-size: 14px;
+}
+
+.metric span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.metric small {
+  color: var(--muted);
+}
+
+.metric.ok {
+  border-color: rgba(38, 115, 77, .35);
+  background: rgba(38, 115, 77, .07);
+}
+
+.metric.ok span {
+  color: var(--ok);
+}
+
+.metric.bad {
+  border-color: rgba(161, 61, 61, .4);
+  background: rgba(161, 61, 61, .07);
+}
+
+.metric.bad span,
+.metric .miss {
+  color: var(--bad);
+}
+
+.metric.pending .miss {
+  color: var(--warn);
+}
+
+.gap {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.gap.ok {
+  color: var(--ok);
+}
+
+.gap.bad {
+  color: var(--bad);
+}
+
+.inline-form {
+  margin-top: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.inline-form summary {
+  display: inline-block;
+  width: auto;
+  cursor: pointer;
+  padding: 7px 12px;
+  font-size: 13px;
+  user-select: none;
+}
+
+.inline-form[open] summary {
+  margin-bottom: 10px;
+}
+
+.inline-form .form-grid {
+  margin-top: 8px;
+}
+
+.review-box {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fbf9f4;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.baseline-editor {
+  width: 100%;
+}
+
+.baseline-editor .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.desk-actions {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
 .toast {
   position: fixed;
   right: 20px;
@@ -352,7 +512,9 @@ main {
   .stats,
   .form-grid,
   .detail,
-  .toolbar {
+  .toolbar,
+  .metric-grid,
+  .baseline-editor .form-grid {
     grid-template-columns: 1fr;
   }
 

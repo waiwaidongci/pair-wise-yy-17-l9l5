@@ -14,7 +14,12 @@
           <h1 id="title">业务系统</h1>
           <p class="lede" id="lede"></p>
         </div>
-        <button class="secondary" id="refreshBtn">刷新数据</button>
+        <div class="top-actions">
+          <label class="operator">当前值班人员
+            <select id="operator"></select>
+          </label>
+          <button class="secondary" id="refreshBtn">刷新数据</button>
+        </div>
       </div>
       <nav class="tabs" id="tabs"></nav>
     </header>
@@ -22,5 +27,6 @@
   </div>
   <div class="toast" id="toast"></div>
   <script src="/app.js"></script>
+  <script src="/desk.js"></script>
 </body>
 </html>
